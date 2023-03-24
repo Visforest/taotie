@@ -75,6 +75,7 @@ func main() {
 	go grpcServe()
 	go CacheMsg(ctx)
 	go WriteMsg(ctx)
+	go RewriteMsg(ctx)
 	go Sentinel()
 
 	select {

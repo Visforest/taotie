@@ -76,12 +76,14 @@ func main() {
 	go CacheMsg(ctx)
 	go WriteMsg(ctx)
 	go RewriteMsg(ctx)
-	go Sentinel()
+	go Sentinel(ctx)
+	go StageData(ctx)
 
 	select {
 	case sig := <-ch:
 		if sig == os.Kill || sig == os.Interrupt {
-			ServerLogger.Fatalf(context.Background(), nil, "server stopped,sig is %d", sig)
+			ServerLogger.Fatalf(ctx, nil, "server stopped,sig is %d", sig)
+			StageData(ctx)
 			break
 		}
 	}

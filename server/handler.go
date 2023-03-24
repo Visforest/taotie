@@ -18,10 +18,17 @@ import (
 )
 
 // ChBuf channel buffer size
-const ChBuf = 1 << 16
+const BufSize = 1 << 16
 
-var ChMsg = make(chan kafka.Message, ChBuf)
-var ChCache = make(chan kafka.Message, ChBuf)
+type Direction int8
+
+const (
+	SaveLocal Direction = 1
+)
+
+var ChMsg = make(chan kafka.Message, BufSize)
+var ChCache = make(chan kafka.Message, BufSize)
+var ChDirection = make(chan Direction)
 
 func GenMessage(topic string, data *map[string]interface{}) (*kafka.Message, error) {
 	bytes, err := json.Marshal(*data)
@@ -49,9 +56,19 @@ func BufMsg(msgs ...*kafka.Message) {
 // WriteMsg write msgs to kafka
 func WriteMsg(ctx context.Context) {
 	for m := range ChMsg {
-		if err := KafkaWriter.WriteMessages(ctx, m); err != nil {
-			ServerLogger.Errorf(ctx, err, "write msg to kafka failed")
-			ChCache <- m
+		select {
+		case direction := <-ChDirection:
+			if direction == SaveLocal {
+				// stop to write to kafka, write to local instead
+				return
+			} else {
+				continue
+			}
+		default:
+			if err := KafkaWriter.WriteMessages(ctx, m); err != nil {
+				ServerLogger.Errorf(ctx, err, "write msg to kafka failed")
+				ChCache <- m
+			}
 		}
 	}
 }
@@ -252,16 +269,21 @@ func CacheMsg(ctx context.Context) {
 
 		lockFile.WriteString(cacheId)
 
-		var timedout = false
+		var cancleWrite = false
 		go func() {
 			select {
 			case <-ctx.Done():
-				timedout = true
+				cancleWrite = true
 				cancel()
+			case direction := <-ChDirection:
+				if direction == SaveLocal {
+					cancleWrite = true
+					cancel()
+				}
 			}
 		}()
 		for m := range ChCache {
-			if timedout {
+			if cancleWrite {
 				break
 			}
 			if mbytes, err := json.Marshal(m); err == nil {
@@ -288,6 +310,71 @@ func CacheMsg(ctx context.Context) {
 }
 
 // Sentinel monitor kafka status and provides advice
-func Sentinel() {
+func Sentinel(ctx context.Context) {
 
+}
+
+func saveMsgToLocal(ctx context.Context, ch chan kafka.Message) {
+	cacheId := uuid.NewString()
+	// cache file, where msgs are cached
+	cachePath := fmt.Sprintf("%s/cache_%s.cache", GlbConfig.Data.DataDir, cacheId)
+	// cache idx file, in which each msg size is record line by line
+	idxPath := fmt.Sprintf("%s/cache_%s.idx", GlbConfig.Data.DataDir, cacheId)
+	// cache file lock, represents whether the cache file with the same cacheId is used
+	lockPath := fmt.Sprintf("%s/cache_%s.lock", GlbConfig.Data.DataDir, cacheId)
+
+	cacheFile, err := os.OpenFile(cachePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
+	if err != nil {
+		ServerLogger.Errorf(ctx, err, "create cache file failed")
+		return
+	}
+
+	defer cacheFile.Close()
+
+	idxFile, err := os.OpenFile(idxPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
+	if err != nil {
+		ServerLogger.Errorf(ctx, err, "create idx file failed")
+		return
+	}
+
+	defer idxFile.Close()
+
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
+	if err != nil {
+		ServerLogger.Errorf(ctx, err, "create lock file failed")
+		return
+	}
+
+	defer os.Remove(lockPath)
+
+	lockFile.WriteString(cacheId)
+
+	for m := range ch {
+		if mbytes, err := json.Marshal(m); err == nil {
+			if byteLen, err := cacheFile.Write(mbytes); err == nil {
+				idxFile.WriteString(fmt.Sprintf("%d\n", byteLen))
+			} else {
+				ServerLogger.Errorf(ctx, err, "record cache idx failed")
+			}
+		} else {
+			ServerLogger.Errorf(ctx, err, "json encode msg failed:%+v", m)
+		}
+	}
+}
+
+// StageData save data to local file
+func StageData(ctx context.Context) {
+	if len(ChMsg) == 0 && len(ChCache) == 0 {
+		// no msgs in channel
+		return
+	}
+	// msgs in channel aren't read completely,turn to save to local
+	ChDirection <- SaveLocal
+	if len(ChMsg) > 0 {
+		saveMsgToLocal(ctx, ChMsg)
+	}
+	if len(ChCache) > 0 {
+		saveMsgToLocal(ctx, ChCache)
+	}
+	close(ChDirection)
 }

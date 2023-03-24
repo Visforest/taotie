@@ -6,6 +6,7 @@ import (
 	"github.com/segmentio/kafka-go"
 	"github.com/visforest/vftt/grpc/proto"
 	. "github.com/visforest/vftt/server"
+	"github.com/visforest/vftt/utils"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"time"
@@ -24,19 +25,7 @@ func patchExt(ctx context.Context, obj string) (*map[string]interface{}, error) 
 	for _, extField := range GlbConfig.Server.ExtFields {
 		switch extField {
 		case EXT_IP:
-			if md, ok := metadata.FromIncomingContext(ctx); ok {
-				// 在有网关代理的情况下，获取真实 IP
-				v := md.Get("X-Real-IP")
-				if len(v) > 0 {
-					result["ip"] = v[0]
-					continue
-				}
-			}
-			// 无网关代理的情况下获取对端的 IP
-			p, ok := peer.FromContext(ctx)
-			if ok {
-				result["ip"] = p.Addr.String()
-			}
+			result["ip"] = utils.GetIpFromGrpc(ctx)
 		case EXT_EVENT_TIMESTAMP:
 			if _, ok := result["timestamp"]; !ok {
 				// 没有时间戳时，补足时间戳

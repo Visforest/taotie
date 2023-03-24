@@ -5,6 +5,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
 	. "github.com/visforest/vftt/server"
+	"github.com/visforest/vftt/utils"
 	"time"
 )
 
@@ -42,19 +43,15 @@ func patchExts(c *gin.Context, data *map[string]interface{}) {
 		switch extField {
 		case EXT_IP:
 			// 来源IP
-			ip := c.Request.Header.Get("X-Forward-For")
-			if ip == "" {
-				ip = c.ClientIP()
-			}
-			(*data)["ip"] = ip
+			(*data)["ip"] = utils.GetIpFromGin(c)
 		case EXT_UA:
 			// 客户端标识
-			ua := c.Request.Header.Get("User-Agent")
-			(*data)["ua"] = ua
+			(*data)["ua"] = c.Request.Header.Get("User-Agent")
 		case EXT_REQUEST_ID:
 			// 请求ID
 			rid := c.Request.Header.Get("X-Request-ID")
 			if rid == "" {
+				// 建议在网关层补充请求 ID
 				// 生成请求 ID
 				id, err := uuid.NewUUID()
 				if err != nil {
@@ -67,8 +64,7 @@ func patchExts(c *gin.Context, data *map[string]interface{}) {
 			(*data)["rid"] = rid
 		case EXT_COOKIE:
 			// cookie
-			cookie := c.Request.Header.Get("Cookie")
-			(*data)["cookie"] = cookie
+			(*data)["cookie"] = c.Request.Header.Get("Cookie")
 		case EXT_EVENT_TIMESTAMP:
 			// 时间时间戳
 			if _, ok := (*data)["timestamp"]; !ok {

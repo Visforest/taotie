@@ -1,7 +1,6 @@
 package http
 
 import (
-	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
@@ -80,22 +79,6 @@ func patchExts(c *gin.Context, data *map[string]interface{}) {
 	}
 }
 
-func genMessage(topic string, data *map[string]interface{}) (*kafka.Message, error) {
-	uuidKey, err := uuid.NewUUID()
-	if err != nil {
-		return nil, err
-	}
-	bytes, err := json.Marshal(*data)
-	if err != nil {
-		return nil, err
-	}
-	return &kafka.Message{
-		Topic: topic,
-		Key:   []byte(uuidKey.String()),
-		Value: bytes,
-	}, nil
-}
-
 func IntakeData(c *gin.Context) {
 	var req IntakeDataParam
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -109,7 +92,7 @@ func IntakeData(c *gin.Context) {
 	}
 	patchExts(c, &req.Data)
 
-	msg, err := genMessage(req.Topic, &req.Data)
+	msg, err := GenMessage(req.Topic, &req.Data)
 	if err != nil {
 		ServerLogger.Errorf(c, err, "gen kafka msg")
 		c.JSON(200, serverErrResp)
@@ -133,7 +116,7 @@ func BatchIntakeData(c *gin.Context) {
 	for _, d := range req.Data {
 		tmp := d
 		patchExts(c, &tmp)
-		msg, err := genMessage(req.Topic, &tmp)
+		msg, err := GenMessage(req.Topic, &tmp)
 		if err != nil {
 			ServerLogger.Errorf(c, err, "gen kafka msg")
 			c.JSON(200, serverErrResp)
@@ -158,7 +141,7 @@ func MixIntakeData(c *gin.Context) {
 		tmp := d
 		patchExts(c, &tmp.Data)
 
-		msg, err := genMessage(d.Topic, &d.Data)
+		msg, err := GenMessage(d.Topic, &d.Data)
 		if err != nil {
 			ServerLogger.Errorf(c, err, "gen kafka msg")
 			c.JSON(200, serverErrResp)

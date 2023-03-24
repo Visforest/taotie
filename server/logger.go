@@ -14,7 +14,12 @@ type TLogger struct {
 	zerolog.Logger
 }
 
-//var ServerLogger *zerolog.Logger
+type LogOption func(e *zerolog.Event) *zerolog.Event
+
+func WithCaller(e *zerolog.Event) *zerolog.Event {
+	return e.Caller()
+}
+
 var ServerLogger *TLogger
 var RetryLogger *TLogger
 
@@ -38,7 +43,7 @@ func InitLogger(fileName string) (*TLogger, error) {
 	zerolog.LevelFieldName = "l"
 	zerolog.MessageFieldName = "m"
 	zerolog.ErrorFieldName = "e"
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs // 使用毫秒记录时间戳
 
 	var lvl zerolog.Level
 	switch GlbConfig.Log.LogLevel {
@@ -50,10 +55,10 @@ func InitLogger(fileName string) (*TLogger, error) {
 		lvl = zerolog.WarnLevel
 	case "err":
 		lvl = zerolog.ErrorLevel
-	case "panic":
-		lvl = zerolog.PanicLevel
 	case "fatal":
 		lvl = zerolog.FatalLevel
+	case "panic":
+		lvl = zerolog.PanicLevel
 	case "disable":
 		lvl = zerolog.Disabled
 	default:
@@ -68,72 +73,45 @@ func InitLogger(fileName string) (*TLogger, error) {
 	return &logger, nil
 }
 
-func (l *TLogger) Debugf(ctx context.Context, msg string, v ...interface{}) {
+func (l *TLogger) log(ctx context.Context, level zerolog.Level, msg string, err error, opts ...LogOption) {
+	e := l.WithLevel(level)
+	for _, opt := range opts {
+		e = opt(e)
+	}
+	if err != nil {
+		e = e.Err(err)
+	}
 	var reqId string
 	r := ctx.Value("requestId")
 	if r != nil {
 		reqId = r.(string)
 	}
 	if reqId != "" {
-		// 同时记录请求 ID
-		l.Debug().Timestamp().Str("rid", reqId).Msgf(msg, v)
-	} else {
-		l.Debug().Timestamp().Msgf(msg, v)
+		e = e.Str("rid", reqId)
 	}
+	e.Timestamp().Msg(msg)
+}
+
+func (l *TLogger) Debugf(ctx context.Context, msg string, v ...interface{}) {
+	l.log(ctx, zerolog.DebugLevel, fmt.Sprintf(msg, v), nil)
 }
 
 func (l *TLogger) Infof(ctx context.Context, msg string, v ...interface{}) {
-	var reqId string
-	r := ctx.Value("requestId")
-	if r != nil {
-		reqId = r.(string)
-	}
-	if reqId != "" {
-		// 同时记录请求 ID
-		l.Info().Timestamp().Str("rid", reqId).Msgf(msg, v)
-	} else {
-		l.Info().Timestamp().Msgf(msg, v)
-	}
+	l.log(ctx, zerolog.InfoLevel, fmt.Sprintf(msg, v), nil)
 }
 
 func (l *TLogger) Warnf(ctx context.Context, msg string, v ...interface{}) {
-	var reqId string
-	r := ctx.Value("requestId")
-	if r != nil {
-		reqId = r.(string)
-	}
-	if reqId != "" {
-		// 同时记录请求 ID
-		l.Warn().Timestamp().Str("rid", reqId).Msgf(msg, v)
-	} else {
-		l.Warn().Timestamp().Msgf(msg, v)
-	}
+	l.log(ctx, zerolog.WarnLevel, fmt.Sprintf(msg, v), nil, WithCaller)
+}
+
+func (l *TLogger) Errorf(ctx context.Context, err error, msg string, v ...interface{}) {
+	l.log(ctx, zerolog.ErrorLevel, fmt.Sprintf(msg, v), err, WithCaller)
 }
 
 func (l *TLogger) Fatalf(ctx context.Context, err error, msg string, v ...interface{}) {
-	var reqId string
-	r := ctx.Value("requestId")
-	if r != nil {
-		reqId = r.(string)
-	}
-	if reqId != "" {
-		// 同时记录请求 ID
-		l.Fatal().Timestamp().Str("rid", reqId).Err(err).Msgf(msg, v)
-	} else {
-		l.Fatal().Timestamp().Err(err).Msgf(msg, v)
-	}
+	l.log(ctx, zerolog.FatalLevel, fmt.Sprintf(msg, v), err, WithCaller)
 }
 
 func (l *TLogger) Panicf(ctx context.Context, err error, msg string, v ...interface{}) {
-	var reqId string
-	r := ctx.Value("requestId")
-	if r != nil {
-		reqId = r.(string)
-	}
-	if reqId != "" {
-		// 同时记录请求 ID
-		l.Panic().Timestamp().Str("rid", reqId).Err(err).Msgf(msg, v)
-	} else {
-		l.Panic().Timestamp().Err(err).Msgf(msg, v)
-	}
+	l.log(ctx, zerolog.PanicLevel, fmt.Sprintf(msg, v), err, WithCaller)
 }

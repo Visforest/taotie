@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+// 默认包名
+package visforest.vftt.protobuf.api;
+
+// 生成Go程序文件的目录
+option go_package = "grpc/proto/;pb";
+
+import "validate/validate.proto";
+
+service Api{
+  // 单条数据摄入
+  rpc IntakeData(IntakeDataRequest) returns (IntakeDataResponse){};
+
+  // 同 topic 的数据批量摄入
+  rpc BatchIntakeData(BatchIntakeDataRequest) returns (BatchIntakeDataResponse){};
+
+  // 不同 topic 的数据批量摄入
+  rpc MixIntakeData(MixIntakeDataRequest) returns (MixIntakeDataResponse){};
+}
+
+
+message IntakeDataRequest{
+  string topic = 1; // 指定的 kafka topic
+  string data_obj = 2 [(validate.rules).message.required = true]; // json业务数据,内为 json 对象
+}
+
+message IntakeDataResponse{}
+
+message BatchIntakeDataRequest{
+  string topic = 1;// 指定的 kafka topic
+  string data_list = 2 [(validate.rules).message.required = true]; //  json 业务数据，内为 json 对象数组
+}
+
+message BatchIntakeDataResponse{}
+
+
+message MixIntakeDataRequest{
+  message Data{
+    string topic = 1;// 指定的 kafka topic
+    string data_obj = 2 [(validate.rules).message.required = true]; // json业务数据,内为 json 对象
+  }
+
+  repeated Data data = 1 [(validate.rules).message.required = true]; // 批量数据
+}
+
+message MixIntakeDataResponse{}

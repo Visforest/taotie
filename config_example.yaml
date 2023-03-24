@@ -1,0 +1,20 @@
+server:
+  http:
+    addr: 127.0.0.1:8000 # http 服务监听地址，默认 127.0.0.1:8000
+  grpc:
+    addr: 127.0.0.1:9000 # grpc 服务监听地址，127.0.0.1:9000
+  ext_fields:
+    - ip # 采集请求来源 IP
+    - ua # 采集请求头 User-Agent 字段
+    - rid # 采集请求头 X-RequestId 字段
+    - ts # 采集数据中毫秒时间戳 timestamp 字段
+kafka:
+  broker: # Kafka 节点地址，默认 localhost:27017
+    - localhost:27017
+  partition_cnt: 1 # kafka topic 分区数量，默认为1
+  write_timeout: 3
+data:
+  data_dir: /tmp/vftt # 临时数据目录
+log:
+  log_dir: /var/logs/vftt # 日志目录
+  log_level: disable # 日志级别，默认 disable

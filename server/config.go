@@ -21,7 +21,7 @@ type ServerConfig struct {
 
 type KafkaConfig struct {
 	Broker       []string `yaml:"broker"`        // broker 连接地址
-	PartitionCnt uint32   `yaml:"partition_cnt"` // topic 分区数量
+	PartitionCnt int      `yaml:"partition_cnt"` // topic 分区数量
 	AckPolicy    uint8    `yaml:"ack_policy"`    // 向 Kafka 写入数据成功的确认策略
 	WriteTimeout int      `yaml:"write_timeout"` // 写入超时时间
 }

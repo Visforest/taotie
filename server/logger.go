@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/diode"
+	"github.com/rs/zerolog/pkgerrors"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +19,10 @@ type LogOption func(e *zerolog.Event) *zerolog.Event
 
 func WithCaller(e *zerolog.Event) *zerolog.Event {
 	return e.Caller()
+}
+
+func WithStack(e *zerolog.Event) *zerolog.Event {
+	return e.Stack()
 }
 
 var ServerLogger *TLogger
@@ -43,6 +48,8 @@ func InitLogger(fileName string) (*TLogger, error) {
 	zerolog.LevelFieldName = "l"
 	zerolog.MessageFieldName = "m"
 	zerolog.ErrorFieldName = "e"
+	zerolog.ErrorStackFieldName = "es"
+	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs // 使用毫秒记录时间戳
 
 	var lvl zerolog.Level
@@ -105,13 +112,13 @@ func (l *TLogger) Warnf(ctx context.Context, msg string, v ...interface{}) {
 }
 
 func (l *TLogger) Errorf(ctx context.Context, err error, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.ErrorLevel, fmt.Sprintf(msg, v), err, WithCaller)
+	l.log(ctx, zerolog.ErrorLevel, fmt.Sprintf(msg, v), err, WithCaller, WithStack)
 }
 
 func (l *TLogger) Fatalf(ctx context.Context, err error, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.FatalLevel, fmt.Sprintf(msg, v), err, WithCaller)
+	l.log(ctx, zerolog.FatalLevel, fmt.Sprintf(msg, v), err, WithCaller, WithStack)
 }
 
 func (l *TLogger) Panicf(ctx context.Context, err error, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.PanicLevel, fmt.Sprintf(msg, v), err, WithCaller)
+	l.log(ctx, zerolog.PanicLevel, fmt.Sprintf(msg, v), err, WithCaller, WithStack)
 }

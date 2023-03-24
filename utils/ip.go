@@ -33,6 +33,12 @@ func GetIpFromGrpc(ctx context.Context) (ip string) {
 			ip = v[0]
 			return
 		}
+		v = md.Get("X-Forwarded-For")
+		if len(v) > 0 {
+			// 多层代理转发
+			ip = v[0]
+			return
+		}
 	}
 	// 无网关代理的情况下获取对端的 IP
 	pr, ok := peer.FromContext(ctx)

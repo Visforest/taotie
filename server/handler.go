@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
+	"github.com/visforest/vftt/utils"
 	"io"
 	"os"
 	"regexp"
@@ -66,12 +67,12 @@ type FileCache struct {
 }
 
 func (c *FileCache) WriteToKafka(ctx context.Context) error {
-	idxFile, err := os.Open(c.idxFile)
+	idxFile, err := os.OpenFile(c.idxFile, os.O_RDWR|os.O_TRUNC, 0)
 	if err != nil {
 		return err
 	}
 	defer idxFile.Close()
-	cacheFile, err := os.Open(c.cacheFile)
+	cacheFile, err := os.OpenFile(c.cacheFile, os.O_RDWR|os.O_TRUNC, 0)
 	if err != nil {
 		return err
 	}
@@ -85,15 +86,21 @@ func (c *FileCache) WriteToKafka(ctx context.Context) error {
 
 	defer func() {
 		// truncate data that are already written to kafka
-		cacheFile.Truncate(c.readCacheAt)
-		idxFile.Truncate(c.readIdxAt)
+		err := utils.TruncateFile(cacheFile, c.readCacheAt)
+		if err != nil {
+			ServerLogger.Errorf(ctx, err, "truncate cache file failed")
+		}
+		err = utils.TruncateFile(idxFile, c.readIdxAt)
+		if err != nil {
+			ServerLogger.Errorf(ctx, err, "truncate idx file failed")
+		}
 	}()
 
 	idxReader := bufio.NewReader(idxFile)
 	for {
 		line, err := idxReader.ReadString('\n')
-		if len(line) != 0 {
-			msgByteLen, err := strconv.ParseInt(line, 10, 64)
+		if len(line) > 1 {
+			msgByteLen, err := strconv.ParseInt(strings.TrimRight(line, "\n"), 10, 64)
 			if err != nil {
 				return err
 			}

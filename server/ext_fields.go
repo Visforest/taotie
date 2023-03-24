@@ -1,6 +1,6 @@
 package server
 
-// 可选的扩展字段属性
+// options for kafka ext fields
 const (
 	EXT_IP              = "ip"
 	EXT_UA              = "ua"

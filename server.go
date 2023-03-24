@@ -15,26 +15,26 @@ import (
 	"os"
 )
 
-// 启动 HTTP 服务
+// setup HTTP service
 func httpServe() {
 	router := gin.Default()
+	// logic apis
 	intake := router.Group("/intake")
-	//intake.Use(httpApi.PatchData)
 	{
 		intake.POST("/one", httpApi.IntakeData)
 		intake.POST("/batch", httpApi.BatchIntakeData)
 		intake.POST("/mix", httpApi.MixIntakeData)
 	}
-	// 性能监测
+	// performance monitor apis
 	pprof.Register(router, "/dev/pprof")
 
 	err := router.Run(GlbConfig.Server.Http.Addr)
 	if err != nil {
-		ServerLogger.Fatalf(context.Background(), err, "http server shutdown")
+		ServerLogger.Fatalf(context.Background(), err, "http server %s shutdown", GlbConfig.Server.Http.Addr)
 	}
 }
 
-// 启动 grpc 服务
+// setup grpc service
 func grpcServe() {
 	grpcServer := grpc.NewServer()
 	pb.RegisterApiServer(grpcServer, new(grpcApi.GrpcService))
@@ -46,12 +46,8 @@ func grpcServe() {
 	defer listener.Close()
 	err = grpcServer.Serve(listener)
 	if err != nil {
-		ServerLogger.Fatalf(context.Background(), err, "grpc server shutdown")
+		ServerLogger.Fatalf(context.Background(), err, "grpc server %s shutdown", GlbConfig.Server.Grpc.Addr)
 	}
-}
-
-func sentinel() {
-
 }
 
 func main() {
@@ -70,11 +66,17 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	InitKafka()
+
+	ctx := context.Background()
 
 	ch := make(chan os.Signal)
 	go httpServe()
 	go grpcServe()
-	go sentinel()
+	go CacheMsg(ctx)
+	go WriteMsg(ctx)
+	go Sentinel()
+
 	select {
 	case sig := <-ch:
 		if sig == os.Kill || sig == os.Interrupt {

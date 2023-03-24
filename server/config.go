@@ -6,33 +6,33 @@ import (
 )
 
 type HttpConfig struct {
-	Addr string `yaml:"addr"`
+	Addr string `yaml:"addr"` // http server listening address,eg: 0.0.0.0:8000
 }
 
 type GrpcConfig struct {
-	Addr string `yaml:"addr"`
+	Addr string `yaml:"addr"` // grpc server listening address,eg: 0.0.0.0:8000
 }
 
 type ServerConfig struct {
-	Http      HttpConfig `yaml:"http"`       // http 服务配置
-	Grpc      GrpcConfig `yaml:"grpc"`       // grpc 服务配置
-	ExtFields []string   `yaml:"ext_fields"` // 采集扩展字段
+	Http      HttpConfig `yaml:"http"`
+	Grpc      GrpcConfig `yaml:"grpc"`
+	ExtFields []string   `yaml:"ext_fields"` // ext fields to patch into kafka data
 }
 
 type KafkaConfig struct {
-	Broker       []string `yaml:"broker"`        // broker 连接地址
-	PartitionCnt int      `yaml:"partition_cnt"` // topic 分区数量
-	AckPolicy    uint8    `yaml:"ack_policy"`    // 向 Kafka 写入数据成功的确认策略
-	WriteTimeout int      `yaml:"write_timeout"` // 写入超时时间
+	Broker       []string `yaml:"broker"`        // broker addresses
+	PartitionCnt int      `yaml:"partition_cnt"` // topic partition count
+	AckPolicy    int      `yaml:"ack_policy"`    // acknowledgement policy for writing msg successfully
+	WriteTimeout int      `yaml:"write_timeout"` // write timeout, million second unit
 }
 
 type DataConfig struct {
-	DataDir string `yaml:"data_dir"` // 暂存数据目录
+	DataDir string `yaml:"data_dir"` // cache data directory
 }
 
 type LogConfig struct {
-	LogDir   string `yaml:"log_dir"`   // 日志目录
-	LogLevel string `yaml:"log_level"` // 日志记录级别
+	LogDir   string `yaml:"log_dir"`
+	LogLevel string `yaml:"log_level"`
 }
 
 type Config struct {

@@ -12,7 +12,7 @@ func InitKafka() {
 		Addr:                   kafka.TCP(GlbConfig.Kafka.Broker...),
 		Balancer:               &kafka.LeastBytes{},
 		WriteTimeout:           time.Millisecond * time.Duration(GlbConfig.Kafka.WriteTimeout),
-		RequiredAcks:           kafka.RequireOne,
+		RequiredAcks:           kafka.RequiredAcks(GlbConfig.Kafka.AckPolicy),
 		Async:                  false,
 		BatchSize:              1,
 		Compression:            kafka.Lz4,

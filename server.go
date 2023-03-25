@@ -69,7 +69,7 @@ func main() {
 	InitKafka()
 
 	ctx := context.Background()
-	defer StageData(ctx)
+	defer RushStageData(ctx)
 
 	ch := make(chan os.Signal)
 	go httpServe()
@@ -78,7 +78,6 @@ func main() {
 	go WriteMsg(ctx)
 	go RewriteMsg(ctx)
 	go Sentinel(ctx)
-	go StageData(ctx)
 
 	select {
 	case sig := <-ch:

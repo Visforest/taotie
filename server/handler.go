@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,7 +29,12 @@ const (
 type Direction int8
 
 const (
-	SaveLocal Direction = 1
+	// RushStage rush to stage data before dying
+	RushStage Direction = 1
+	// TemporaryStage temporarily stage data and may resume in the future
+	TemporaryStage Direction = 2
+	// Resume resume to work
+	Resume Direction = 3
 )
 
 var ChMsg = make(chan kafka.Message, BufSize)
@@ -60,14 +66,18 @@ func BufMsg(msgs ...*kafka.Message) {
 
 // WriteMsg write msgs to kafka
 func WriteMsg(ctx context.Context) {
+
+writeKafka:
 	for m := range ChMsg {
 		select {
 		case direction := <-ChDirection:
-			if direction == SaveLocal {
+			switch direction {
+			case RushStage:
+				runtime.Goexit()
+				return
+			case TemporaryStage:
 				// stop to write to kafka, write to local instead
 				return
-			} else {
-				continue
 			}
 		default:
 			if err := KafkaWriter.WriteMessages(ctx, m); err != nil {
@@ -75,6 +85,10 @@ func WriteMsg(ctx context.Context) {
 				ChCache <- m
 			}
 		}
+	}
+	direction := <-ChDirection
+	if direction == Resume {
+		goto writeKafka
 	}
 }
 
@@ -241,6 +255,7 @@ func CacheMsg(ctx context.Context) {
 		ServerLogger.Errorf(ctx, err, "make data dir: %s failed", GlbConfig.Data.DataDir)
 	}
 
+cacheMsg:
 	for {
 		ctx, cancel := context.WithTimeout(ctx, time.Minute)
 
@@ -284,23 +299,28 @@ func CacheMsg(ctx context.Context) {
 
 		lockFile.WriteString(cacheId)
 
+		var timedout = false
 		var cancelWrite = false
+		var pauseWrite = false
 		// monitor timeout and direction
 		go func() {
 			select {
 			case <-ctx.Done():
-				cancelWrite = true
-				cancel()
+				timedout = true
 			case direction := <-ChDirection:
-				if direction == SaveLocal {
+				switch direction {
+				case RushStage:
 					cancelWrite = true
+					cancel()
+				case TemporaryStage:
+					pauseWrite = true
 					cancel()
 				}
 			}
 		}()
 		wroteBytes := 0
 		for m := range ChCache {
-			if cancelWrite {
+			if timedout || cancelWrite || pauseWrite {
 				break
 			}
 			if mbytes, err := json.Marshal(m); err == nil {
@@ -333,12 +353,35 @@ func CacheMsg(ctx context.Context) {
 		if err := os.Remove(lockPath); err != nil {
 			ServerLogger.Errorf(ctx, err, "rm %s failed", lockPath)
 		}
+		if cancelWrite {
+			break
+		}
+		if pauseWrite {
+			goto waitResume
+		}
+	}
+waitResume:
+	direction := <-ChDirection
+	if direction == Resume {
+		goto cacheMsg
 	}
 }
 
 // Sentinel monitor kafka status and provides advice
 func Sentinel(ctx context.Context) {
-
+	var normal = true
+	for {
+		if _, err := kafkaConn.ReadPartitions(); err != nil {
+			ServerLogger.Errorf(ctx, err, "detected exception regularly")
+			ChDirection <- TemporaryStage
+			normal = false
+		} else {
+			if !normal {
+				ChDirection <- Resume
+			}
+		}
+		time.Sleep(time.Second * 5)
+	}
 }
 
 func saveMsgToLocal(ctx context.Context, ch chan kafka.Message) {
@@ -392,15 +435,15 @@ func saveMsgToLocal(ctx context.Context, ch chan kafka.Message) {
 	}
 }
 
-// StageData save data to local file
-func StageData(ctx context.Context) {
+// RushStageData rush to save data to local file before dying
+func RushStageData(ctx context.Context) {
 	ServerLogger.Infof(ctx, "server is stating data...")
 	if len(ChMsg) == 0 && len(ChCache) == 0 {
 		// no msgs in channel
 		return
 	}
 	// msgs in channel aren't read completely,turn to save to local
-	ChDirection <- SaveLocal
+	ChDirection <- RushStage
 	if len(ChMsg) > 0 {
 		saveMsgToLocal(ctx, ChMsg)
 	}

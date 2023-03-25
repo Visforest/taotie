@@ -69,6 +69,7 @@ func main() {
 	InitKafka()
 
 	ctx := context.Background()
+	defer StageData(ctx)
 
 	ch := make(chan os.Signal)
 	go httpServe()
@@ -83,7 +84,6 @@ func main() {
 	case sig := <-ch:
 		if sig == os.Kill || sig == os.Interrupt {
 			ServerLogger.Fatalf(ctx, nil, "server stopped,sig is %d", sig)
-			StageData(ctx)
 			break
 		}
 	}

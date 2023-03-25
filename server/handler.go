@@ -14,11 +14,16 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
-// ChBuf channel buffer size
-const BufSize = 1 << 16
+const (
+	// BufSize channel buffer size
+	BufSize = 1 << 12
+	// MaxCacheSize max cache file size
+	MaxCacheSize = 1 << 16
+)
 
 type Direction int8
 
@@ -84,12 +89,12 @@ type FileCache struct {
 }
 
 func (c *FileCache) WriteToKafka(ctx context.Context) error {
-	idxFile, err := os.OpenFile(c.idxFile, os.O_RDWR|os.O_TRUNC, 0)
+	idxFile, err := os.OpenFile(c.idxFile, os.O_RDWR, 0)
 	if err != nil {
 		return err
 	}
 	defer idxFile.Close()
-	cacheFile, err := os.OpenFile(c.cacheFile, os.O_RDWR|os.O_TRUNC, 0)
+	cacheFile, err := os.OpenFile(c.cacheFile, os.O_RDWR, 0)
 	if err != nil {
 		return err
 	}
@@ -113,6 +118,8 @@ func (c *FileCache) WriteToKafka(ctx context.Context) error {
 		}
 	}()
 
+	cacheFileInfo, _ := cacheFile.Stat()
+	cacheBytes, err := syscall.Mmap(int(cacheFile.Fd()), 0, int(cacheFileInfo.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
 	idxReader := bufio.NewReader(idxFile)
 	for {
 		line, err := idxReader.ReadString('\n')
@@ -121,11 +128,7 @@ func (c *FileCache) WriteToKafka(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			msgBytes := make([]byte, msgByteLen)
-			_, err = cacheFile.Read(msgBytes)
-			if err != nil {
-				return err
-			}
+			msgBytes := cacheBytes[c.readCacheAt : c.readCacheAt+msgByteLen]
 			var msg kafka.Message
 			if err := json.Unmarshal(msgBytes, &msg); err != nil {
 				return err
@@ -249,19 +252,31 @@ func CacheMsg(ctx context.Context) {
 		// cache file lock, represents whether the cache file with the same cacheId is used
 		lockPath := fmt.Sprintf("%s/cache_%s.lock", GlbConfig.Data.DataDir, cacheId)
 
-		cacheFile, err := os.OpenFile(cachePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
+		// cache file, with json encoded kafka message
+		cacheFile, err := os.OpenFile(cachePath, os.O_CREATE|os.O_RDWR, 0666)
 		if err != nil {
 			ServerLogger.Errorf(ctx, err, "create cache file failed")
 			continue
 		}
-
-		idxFile, err := os.OpenFile(idxPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
+		// write placement data
+		_, err = cacheFile.Write(make([]byte, MaxCacheSize))
+		if err != nil {
+			ServerLogger.Errorf(ctx, err, "read&write cache file replacement failed")
+			continue
+		}
+		cacheFileBytes, err := syscall.Mmap(int(cacheFile.Fd()), 0, MaxCacheSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+		if err != nil {
+			ServerLogger.Errorf(ctx, err, "read&write cache file failed")
+			continue
+		}
+		// cache index file,with lengths of every json encoded kafka message
+		idxFile, err := os.OpenFile(idxPath, os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			ServerLogger.Errorf(ctx, err, "create idx file failed")
 			continue
 		}
-
-		lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
+		// cache lock file,indicates whether the cache file is on use and prevents it from being currently modified
+		lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			ServerLogger.Errorf(ctx, err, "create lock file failed")
 			continue
@@ -269,31 +284,43 @@ func CacheMsg(ctx context.Context) {
 
 		lockFile.WriteString(cacheId)
 
-		var cancleWrite = false
+		var cancelWrite = false
+		// monitor timeout and direction
 		go func() {
 			select {
 			case <-ctx.Done():
-				cancleWrite = true
+				cancelWrite = true
 				cancel()
 			case direction := <-ChDirection:
 				if direction == SaveLocal {
-					cancleWrite = true
+					cancelWrite = true
 					cancel()
 				}
 			}
 		}()
+		wroteBytes := 0
 		for m := range ChCache {
-			if cancleWrite {
+			if cancelWrite {
 				break
 			}
 			if mbytes, err := json.Marshal(m); err == nil {
-				if byteLen, err := cacheFile.Write(mbytes); err == nil {
-					idxFile.WriteString(fmt.Sprintf("%d\n", byteLen))
-				} else {
-					ServerLogger.Errorf(ctx, err, "record cache idx failed")
+				if wroteBytes+len(mbytes) > MaxCacheSize {
+					break
 				}
+				copy(cacheFileBytes[wroteBytes:wroteBytes+len(mbytes)], mbytes)
+				// record json encoded kafka message length
+				idxFile.WriteString(fmt.Sprintf("%d\n", len(mbytes)))
+				wroteBytes += len(mbytes)
 			} else {
 				ServerLogger.Errorf(ctx, err, "json encode msg failed:%+v", m)
+			}
+		}
+		if err = syscall.Munmap(cacheFileBytes); err != nil {
+			ServerLogger.Errorf(ctx, err, "unmap %s failed", cachePath)
+		}
+		if wroteBytes < MaxCacheSize {
+			if err = cacheFile.Truncate(int64(MaxCacheSize - wroteBytes)); err != nil {
+				ServerLogger.Errorf(ctx, err, "truncate %s failed", cachePath)
 			}
 		}
 
@@ -323,7 +350,7 @@ func saveMsgToLocal(ctx context.Context, ch chan kafka.Message) {
 	// cache file lock, represents whether the cache file with the same cacheId is used
 	lockPath := fmt.Sprintf("%s/cache_%s.lock", GlbConfig.Data.DataDir, cacheId)
 
-	cacheFile, err := os.OpenFile(cachePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
+	cacheFile, err := os.OpenFile(cachePath, os.O_CREATE|os.O_WRONLY, 0660)
 	if err != nil {
 		ServerLogger.Errorf(ctx, err, "create cache file failed")
 		return
@@ -331,7 +358,7 @@ func saveMsgToLocal(ctx context.Context, ch chan kafka.Message) {
 
 	defer cacheFile.Close()
 
-	idxFile, err := os.OpenFile(idxPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
+	idxFile, err := os.OpenFile(idxPath, os.O_CREATE|os.O_WRONLY, 0660)
 	if err != nil {
 		ServerLogger.Errorf(ctx, err, "create idx file failed")
 		return
@@ -339,13 +366,16 @@ func saveMsgToLocal(ctx context.Context, ch chan kafka.Message) {
 
 	defer idxFile.Close()
 
-	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_WRONLY, 0660)
 	if err != nil {
 		ServerLogger.Errorf(ctx, err, "create lock file failed")
 		return
 	}
 
-	defer os.Remove(lockPath)
+	defer func() {
+		lockFile.Close()
+		os.Remove(lockPath)
+	}()
 
 	lockFile.WriteString(cacheId)
 
@@ -364,6 +394,7 @@ func saveMsgToLocal(ctx context.Context, ch chan kafka.Message) {
 
 // StageData save data to local file
 func StageData(ctx context.Context) {
+	ServerLogger.Infof(ctx, "server is stating data...")
 	if len(ChMsg) == 0 && len(ChCache) == 0 {
 		// no msgs in channel
 		return
@@ -377,4 +408,5 @@ func StageData(ctx context.Context) {
 		saveMsgToLocal(ctx, ChCache)
 	}
 	close(ChDirection)
+	ServerLogger.Infof(ctx, "server finished stating data.")
 }

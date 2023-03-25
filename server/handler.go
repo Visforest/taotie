@@ -39,7 +39,7 @@ const (
 
 var ChMsg = make(chan kafka.Message, BufSize)
 var ChCache = make(chan kafka.Message, BufSize)
-var ChDirection = make(chan Direction)
+var ChDirection = make(chan Direction, 2)
 
 func GenMessage(topic string, data *map[string]interface{}) (*kafka.Message, error) {
 	bytes, err := json.Marshal(*data)
@@ -370,17 +370,22 @@ waitResume:
 // Sentinel monitor kafka status and provides advice
 func Sentinel(ctx context.Context) {
 	var normal = true
+	dur := time.Second * 10
 	for {
 		if _, err := kafkaConn.ReadPartitions(); err != nil {
 			ServerLogger.Errorf(ctx, err, "detected exception regularly")
 			ChDirection <- TemporaryStage
+			ChDirection <- TemporaryStage
 			normal = false
+			dur = time.Second * 5
 		} else {
 			if !normal {
 				ChDirection <- Resume
+				ChDirection <- Resume
+				dur = time.Second * 10
 			}
 		}
-		time.Sleep(time.Second * 5)
+		time.Sleep(dur)
 	}
 }
 
@@ -443,6 +448,8 @@ func RushStageData(ctx context.Context) {
 		return
 	}
 	// msgs in channel aren't read completely,turn to save to local
+	// and we sent 2, because we have 2 goroutine consumers. A broadcast is better, may be done in the future.
+	ChDirection <- RushStage
 	ChDirection <- RushStage
 	if len(ChMsg) > 0 {
 		saveMsgToLocal(ctx, ChMsg)

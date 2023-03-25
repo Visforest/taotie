@@ -8,7 +8,7 @@ import (
 
 var KafkaWriter *kafka.Writer
 
-var kafkaConn kafka.Conn
+var kafkaConn *kafka.Conn
 
 func InitKafka(ctx context.Context) {
 	KafkaWriter = &kafka.Writer{
@@ -21,7 +21,8 @@ func InitKafka(ctx context.Context) {
 		Compression:            kafka.Lz4,
 		AllowAutoTopicCreation: true,
 	}
-	kafkaConn, err := kafka.Dial("tcp", GlbConfig.Kafka.Broker[0])
+	var err error
+	kafkaConn, err = kafka.Dial("tcp", GlbConfig.Kafka.Broker[0])
 	if err != nil {
 		ServerLogger.Panicf(ctx, err, "connect to kafka node %s failed", GlbConfig.Kafka.Broker[0])
 	}

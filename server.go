@@ -66,9 +66,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	InitKafka()
-
 	ctx := context.Background()
+	InitKafka(ctx)
+
 	defer RushStageData(ctx)
 
 	ch := make(chan os.Signal)

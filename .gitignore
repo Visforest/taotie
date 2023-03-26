@@ -3,4 +3,7 @@
 */bin/
 *.log
 *.txt
+*.cache
+*.idx
+*.lock
 .DS_Store

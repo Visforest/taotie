@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/diode"
-	"github.com/rs/zerolog/pkgerrors"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/diode"
+	"github.com/rs/zerolog/pkgerrors"
 )
 
 type TLogger struct {
@@ -16,10 +17,6 @@ type TLogger struct {
 }
 
 type LogOption func(e *zerolog.Event) *zerolog.Event
-
-func WithCaller(e *zerolog.Event) *zerolog.Event {
-	return e.Caller()
-}
 
 func WithStack(e *zerolog.Event) *zerolog.Event {
 	return e.Stack()
@@ -50,7 +47,7 @@ func InitLogger(fileName string) (*TLogger, error) {
 	zerolog.ErrorFieldName = "e"
 	zerolog.ErrorStackFieldName = "es"
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs // 使用毫秒记录时间戳
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs // timestamp in million seconds
 
 	var lvl zerolog.Level
 	switch GlbConfig.Log.LogLevel {
@@ -100,25 +97,25 @@ func (l *TLogger) log(ctx context.Context, level zerolog.Level, msg string, err 
 }
 
 func (l *TLogger) Debugf(ctx context.Context, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.DebugLevel, fmt.Sprintf(msg, v), nil)
+	l.log(ctx, zerolog.DebugLevel, fmt.Sprintf(msg, v...), nil)
 }
 
 func (l *TLogger) Infof(ctx context.Context, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.InfoLevel, fmt.Sprintf(msg, v), nil)
+	l.log(ctx, zerolog.InfoLevel, fmt.Sprintf(msg, v...), nil)
 }
 
 func (l *TLogger) Warnf(ctx context.Context, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.WarnLevel, fmt.Sprintf(msg, v), nil, WithCaller)
+	l.log(ctx, zerolog.WarnLevel, fmt.Sprintf(msg, v...), nil)
 }
 
 func (l *TLogger) Errorf(ctx context.Context, err error, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.ErrorLevel, fmt.Sprintf(msg, v), err, WithCaller, WithStack)
+	l.log(ctx, zerolog.ErrorLevel, fmt.Sprintf(msg, v...), err, WithStack)
 }
 
 func (l *TLogger) Fatalf(ctx context.Context, err error, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.FatalLevel, fmt.Sprintf(msg, v), err, WithCaller, WithStack)
+	l.log(ctx, zerolog.FatalLevel, fmt.Sprintf(msg, v...), err, WithStack)
 }
 
 func (l *TLogger) Panicf(ctx context.Context, err error, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.PanicLevel, fmt.Sprintf(msg, v), err, WithCaller, WithStack)
+	l.log(ctx, zerolog.PanicLevel, fmt.Sprintf(msg, v...), err, WithStack)
 }

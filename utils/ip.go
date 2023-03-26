@@ -2,21 +2,26 @@ package utils
 
 import (
 	"context"
+	"net"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
-	"net"
-	"strings"
 )
 
 // GetIpFromGin get ip from gin request context
 func GetIpFromGin(ctx *gin.Context) (ip string) {
 	ip = ctx.Request.Header.Get("X-Real-IP")
 	if ip == "" {
-		ips := strings.Split(ctx.Request.Header.Get("X-Forwarded-For"), ",")
-		if len(ips) > 0 {
-			// 有多层代理转发的情况下，取首个 IP
-			ip = ips[0]
+		if ctx.Request.Header.Get("X-Forwarded-For") != "" {
+			ips := strings.Split(ctx.Request.Header.Get("X-Forwarded-For"), ",")
+			if len(ips) > 0 {
+				// 有多层代理转发的情况下，取首个 IP
+				ip = ips[0]
+			} else {
+				ip = ctx.ClientIP()
+			}
 		} else {
 			ip = ctx.ClientIP()
 		}

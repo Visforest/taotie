@@ -14,7 +14,40 @@
 - 服务器性能监测上报
 - 移动设备信息动态采集
 
-配置说明，示例可参阅 [config_example.yaml](./config_example.yaml)：
+# 启动
+
+## 编译执行
+
+查看编译帮助：
+```
+$ make help
+```
+
+编译：
+```
+$ make linux
+```
+
+运行：
+```console
+$  ./bin/vftt -c your_config.yaml
+```
+
+## docker
+
+构建镜像
+```
+$ docker build -f deploy/Dockerfile -t vftt .
+```
+
+启动容器：
+```
+$ docker run -d --name taotie -v /tmp/vftt/logs:/data/cache/ -v /etc/vftt/:/data/conf/ -p 8000:8000 -p 9000:9000  vftt:latest
+```
+
+# 配置说明
+
+示例可参阅 [config_example.yaml](./config_example.yaml)：
 
 | 字段                | 可选项  | 说明                                                         | 默认值             |
 | ------------------- | ------- | ------------------------------------------------------------ | ------------------ |
@@ -26,7 +59,7 @@
 |                     | rid     | 请求标识，即请求头中的 `X-Request-ID`                        | 使用 uuid 生成     |
 |                     | ck      | 请求用户标识，即请求头中的 `Cookie`                          |                    |
 |                     | ts      | 数据业务毫秒时间戳，即数据中的 `timestamp` 字段              | 使用当前毫秒时间戳 |
-| kafka.broker        |         | kafka 连接节点地址                                           | localhost:27017    |
+| kafka.broker        |         | kafka 连接节点地址                                           | localhost:9092    |
 | kafka.partition_cnt |         | kafka topic 分区数量                                         | 1                  |
 | kafka.write_timeout |         | kafka 写消息超时时间，单位为毫秒                             | 10                 |
 | kafka.ack_policy    |         | kafka 写入消息成功的确认机制                                 | one                |

@@ -11,7 +11,7 @@ server:
     - ts
 kafka:
   broker:
-    - localhost:27017
+    - localhost:9092
   partition_cnt: 1
   ack_policy: 1
   write_timeout: 3

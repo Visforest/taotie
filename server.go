@@ -78,8 +78,8 @@ func main() {
 	go httpServe(ctx)
 	go grpcServe(ctx)
 	go CacheMsg(ctx)
-	go WriteMsg(ctx)
-	go RewriteMsg(ctx)
+	go SendMsg(ctx)
+	go ResendMsg(ctx)
 	go Sentinel(ctx)
 
 	for {

@@ -59,8 +59,8 @@ func BufMsg(msgs ...*kafka.Message) {
 	}
 }
 
-// WriteMsg write msgs to kafka
-func WriteMsg(ctx context.Context) {
+// SendMsg sends msgs to kafka
+func SendMsg(ctx context.Context) {
 
 writeKafka:
 	for {
@@ -91,8 +91,8 @@ waitResume:
 	}
 }
 
-// RewriteMsg rewrite cached msgs to kafka
-func RewriteMsg(ctx context.Context) {
+// ResendMsg resends cached msgs to kafka
+func ResendMsg(ctx context.Context) {
 	if err := os.MkdirAll(GlbConfig.Data.DataDir, 0666); err != nil {
 		ServerLogger.Panicf(ctx, err, "make data dir: %s failed", GlbConfig.Data.DataDir)
 	}

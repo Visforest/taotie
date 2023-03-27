@@ -4,19 +4,20 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
+	"os"
+
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 	grpcApi "github.com/visforest/vftt/grpc"
-	"github.com/visforest/vftt/grpc/proto"
+	pb "github.com/visforest/vftt/grpc/proto"
 	httpApi "github.com/visforest/vftt/http"
 	. "github.com/visforest/vftt/server"
 	"google.golang.org/grpc"
-	"net"
-	"os"
 )
 
 // setup HTTP service
-func httpServe() {
+func httpServe(ctx context.Context) {
 	router := gin.Default()
 	// logic apis
 	intake := router.Group("/intake")
@@ -28,6 +29,7 @@ func httpServe() {
 	// performance monitor apis
 	pprof.Register(router, "/dev/pprof")
 
+	ServerLogger.Debugf(ctx, "http server started...")
 	err := router.Run(GlbConfig.Server.Http.Addr)
 	if err != nil {
 		ServerLogger.Fatalf(context.Background(), err, "http server %s shutdown", GlbConfig.Server.Http.Addr)
@@ -35,15 +37,16 @@ func httpServe() {
 }
 
 // setup grpc service
-func grpcServe() {
+func grpcServe(ctx context.Context) {
 	grpcServer := grpc.NewServer()
 	pb.RegisterApiServer(grpcServer, new(grpcApi.GrpcService))
 	listener, err := net.Listen("tcp", GlbConfig.Server.Grpc.Addr)
 	if err != nil {
-		ServerLogger.Fatalf(context.Background(), err, "grpc server listen failed")
+		ServerLogger.Fatalf(ctx, err, "grpc server listen failed")
 		return
 	}
 	defer listener.Close()
+	ServerLogger.Debugf(ctx, "grpc server started...")
 	err = grpcServer.Serve(listener)
 	if err != nil {
 		ServerLogger.Fatalf(context.Background(), err, "grpc server %s shutdown", GlbConfig.Server.Grpc.Addr)
@@ -72,18 +75,17 @@ func main() {
 	defer RushStageData(ctx)
 
 	ch := make(chan os.Signal)
-	go httpServe()
-	go grpcServe()
+	go httpServe(ctx)
+	go grpcServe(ctx)
 	go CacheMsg(ctx)
 	go WriteMsg(ctx)
 	go RewriteMsg(ctx)
 	go Sentinel(ctx)
 
-	select {
-	case sig := <-ch:
+	for {
+		sig := <-ch
 		if sig == os.Kill || sig == os.Interrupt {
-			ServerLogger.Fatalf(ctx, nil, "server stopped,sig is %d", sig)
-			break
+			ServerLogger.Panicf(ctx, nil, "server stopped,sig is %d", sig)
 		}
 	}
 }

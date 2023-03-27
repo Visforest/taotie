@@ -2,8 +2,9 @@ package server
 
 import (
 	"context"
-	"github.com/segmentio/kafka-go"
 	"time"
+
+	"github.com/segmentio/kafka-go"
 )
 
 var KafkaWriter *kafka.Writer
@@ -25,5 +26,6 @@ func InitKafka(ctx context.Context) {
 	kafkaConn, err = kafka.Dial("tcp", GlbConfig.Kafka.Broker[0])
 	if err != nil {
 		ServerLogger.Panicf(ctx, err, "connect to kafka node %s failed", GlbConfig.Kafka.Broker[0])
+		// panic(fmt.Sprintf("connect to kafka node %s failed", GlbConfig.Kafka.Broker[0]))
 	}
 }

@@ -5,16 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/pkg/errors"
-	"github.com/segmentio/kafka-go"
-	"github.com/visforest/vftt/utils"
 	"io"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/google/uuid"
+	"github.com/pkg/errors"
+	"github.com/segmentio/kafka-go"
+	"github.com/visforest/vftt/utils"
 )
 
 type FileCache struct {
@@ -61,7 +62,7 @@ func NewCache() (*FileCache, error) {
 		return nil, errors.Wrap(err, "read&write cache file failed")
 	}
 	// cache index file,with lengths of every json encoded kafka message
-	cache.idxFile, err = os.OpenFile(cache.idxFilePath, os.O_CREATE|os.O_APPEND, 0666)
+	cache.idxFile, err = os.OpenFile(cache.idxFilePath, os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		return nil, errors.Wrap(err, "create idx file failed")
 	}
@@ -75,14 +76,17 @@ func (c *FileCache) Lock() {
 	// cache file lock, represents whether the cache file with the same cacheId is used
 	c.lockFilePath = fmt.Sprintf("%s/cache_%s.lock", GlbConfig.Data.DataDir, c.id)
 	// cache lock file,indicates whether the cache file is on use and prevents it from being currently modified
-	c.lockFile, _ = os.OpenFile(c.lockFilePath, os.O_CREATE|os.O_APPEND, 0666)
+	c.lockFile, _ = os.OpenFile(c.lockFilePath, os.O_CREATE|os.O_WRONLY, 0666)
 
-	c.lockFile.WriteString(c.id)
+	n, _ := c.lockFile.WriteString(c.id)
+	fmt.Printf("lock file %s wrote %d", c.idxFilePath, n)
+	c.lockFile.Close()
 }
 
 // Unlock unlock cache file
 func (c *FileCache) Unlock() {
 	os.Remove(c.lockFilePath)
+	fmt.Printf("idx file %s is deleted", c.lockFilePath)
 	c.Mutex.Unlock()
 }
 
@@ -90,7 +94,9 @@ func (c *FileCache) Unlock() {
 func (c *FileCache) WriteCache(data []byte) {
 	copy(c.cacheFileBytes[c.wroteAt:c.wroteAt+len(data)], data)
 	// record json encoded kafka message length
-	c.idxFile.WriteString(fmt.Sprintf("%d\n", len(data)))
+	n, err := c.idxFile.WriteString(fmt.Sprintf("%d\n", len(data)))
+	fmt.Printf("idx file %s wrote %d \n", c.idxFilePath, n)
+	fmt.Printf("idx file write err:%+v \n", err)
 	c.wroteAt += len(data)
 }
 
@@ -111,10 +117,6 @@ func (c *FileCache) FlushCache(maxSize int) error {
 		return err
 	}
 	err = c.idxFile.Close()
-	if err != nil {
-		return err
-	}
-	err = c.lockFile.Close()
 	if err != nil {
 		return err
 	}

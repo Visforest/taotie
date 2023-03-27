@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -18,12 +19,15 @@ type TLogger struct {
 
 type LogOption func(e *zerolog.Event) *zerolog.Event
 
+func WithCaller(e *zerolog.Event) *zerolog.Event {
+	return e.Caller(3)
+}
+
 func WithStack(e *zerolog.Event) *zerolog.Event {
 	return e.Stack()
 }
 
 var ServerLogger *TLogger
-var RetryLogger *TLogger
 
 func InitLogger(fileName string) (*TLogger, error) {
 	if !strings.HasSuffix(GlbConfig.Log.LogDir, "/") {
@@ -105,17 +109,24 @@ func (l *TLogger) Infof(ctx context.Context, msg string, v ...interface{}) {
 }
 
 func (l *TLogger) Warnf(ctx context.Context, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.WarnLevel, fmt.Sprintf(msg, v...), nil)
+	l.log(ctx, zerolog.WarnLevel, fmt.Sprintf(msg, v...), nil, WithCaller)
 }
 
 func (l *TLogger) Errorf(ctx context.Context, err error, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.ErrorLevel, fmt.Sprintf(msg, v...), err, WithStack)
+	l.log(ctx, zerolog.ErrorLevel, fmt.Sprintf(msg, v...), err, WithCaller, WithStack)
 }
 
 func (l *TLogger) Fatalf(ctx context.Context, err error, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.FatalLevel, fmt.Sprintf(msg, v...), err, WithStack)
+	msg = fmt.Sprintf(msg, v...)
+	l.log(ctx, zerolog.FatalLevel, msg, err, WithCaller, WithStack)
+	// zerolog doesn't write log instantly
+	time.Sleep(time.Second)
+	log.Fatalf(msg)
 }
 
 func (l *TLogger) Panicf(ctx context.Context, err error, msg string, v ...interface{}) {
-	l.log(ctx, zerolog.PanicLevel, fmt.Sprintf(msg, v...), err, WithStack)
+	msg = fmt.Sprintf(msg, v...)
+	l.log(ctx, zerolog.PanicLevel, msg, err, WithCaller, WithStack)
+	time.Sleep(time.Second)
+	panic(msg)
 }

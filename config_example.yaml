@@ -20,4 +20,3 @@ data:
 log:
   log_dir: /var/logs/vftt
   log_level: disable
-  max_size: 512M

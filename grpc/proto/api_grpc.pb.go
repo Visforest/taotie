@@ -21,6 +21,7 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
+	Api_Ping_FullMethodName            = "/visforest.vftt.protobuf.api.Api/Ping"
 	Api_IntakeData_FullMethodName      = "/visforest.vftt.protobuf.api.Api/IntakeData"
 	Api_BatchIntakeData_FullMethodName = "/visforest.vftt.protobuf.api.Api/BatchIntakeData"
 	Api_MixIntakeData_FullMethodName   = "/visforest.vftt.protobuf.api.Api/MixIntakeData"
@@ -30,6 +31,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ApiClient interface {
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 	// 单条数据摄入
 	IntakeData(ctx context.Context, in *IntakeDataRequest, opts ...grpc.CallOption) (*IntakeDataResponse, error)
 	// 同 topic 的数据批量摄入
@@ -44,6 +46,15 @@ type apiClient struct {
 
 func NewApiClient(cc grpc.ClientConnInterface) ApiClient {
 	return &apiClient{cc}
+}
+
+func (c *apiClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+	out := new(PingResponse)
+	err := c.cc.Invoke(ctx, Api_Ping_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *apiClient) IntakeData(ctx context.Context, in *IntakeDataRequest, opts ...grpc.CallOption) (*IntakeDataResponse, error) {
@@ -77,6 +88,7 @@ func (c *apiClient) MixIntakeData(ctx context.Context, in *MixIntakeDataRequest,
 // All implementations must embed UnimplementedApiServer
 // for forward compatibility
 type ApiServer interface {
+	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	// 单条数据摄入
 	IntakeData(context.Context, *IntakeDataRequest) (*IntakeDataResponse, error)
 	// 同 topic 的数据批量摄入
@@ -90,6 +102,9 @@ type ApiServer interface {
 type UnimplementedApiServer struct {
 }
 
+func (UnimplementedApiServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
 func (UnimplementedApiServer) IntakeData(context.Context, *IntakeDataRequest) (*IntakeDataResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IntakeData not implemented")
 }
@@ -110,6 +125,24 @@ type UnsafeApiServer interface {
 
 func RegisterApiServer(s grpc.ServiceRegistrar, srv ApiServer) {
 	s.RegisterService(&Api_ServiceDesc, srv)
+}
+
+func _Api_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ApiServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Api_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ApiServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Api_IntakeData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -173,6 +206,10 @@ var Api_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "visforest.vftt.protobuf.api.Api",
 	HandlerType: (*ApiServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Ping",
+			Handler:    _Api_Ping_Handler,
+		},
 		{
 			MethodName: "IntakeData",
 			Handler:    _Api_IntakeData_Handler,

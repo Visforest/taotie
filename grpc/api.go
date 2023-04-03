@@ -3,13 +3,14 @@ package grpc
 import (
 	"context"
 	"encoding/json"
+	"time"
+
 	"github.com/segmentio/kafka-go"
-	"github.com/visforest/vftt/grpc/proto"
+	pb "github.com/visforest/vftt/grpc/proto"
 	. "github.com/visforest/vftt/server"
 	"github.com/visforest/vftt/utils"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
-	"time"
 )
 
 type GrpcService struct {
@@ -68,6 +69,10 @@ func patchExts(ctx context.Context, list string) ([]map[string]interface{}, erro
 		}
 	}
 	return result, nil
+}
+
+func (s *GrpcService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
+	return &pb.PingResponse{Data: "pong"}, nil
 }
 
 func (s *GrpcService) IntakeData(ctx context.Context, req *pb.IntakeDataRequest) (*pb.IntakeDataResponse, error) {

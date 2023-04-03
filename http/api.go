@@ -1,12 +1,13 @@
 package http
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
 	. "github.com/visforest/vftt/server"
 	"github.com/visforest/vftt/utils"
-	"time"
 )
 
 const (
@@ -73,6 +74,11 @@ func patchExts(c *gin.Context, data *map[string]interface{}) {
 			}
 		}
 	}
+}
+
+// Ping tests connection
+func Ping(c *gin.Context) {
+	c.String(200, "pong")
 }
 
 func IntakeData(c *gin.Context) {

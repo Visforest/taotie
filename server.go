@@ -19,6 +19,8 @@ import (
 // setup HTTP service
 func httpServe(ctx context.Context) {
 	router := gin.Default()
+	// test api
+	router.GET("/ping", httpApi.Ping)
 	// logic apis
 	intake := router.Group("/intake")
 	{

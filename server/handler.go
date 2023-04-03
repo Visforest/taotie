@@ -153,10 +153,11 @@ func ResendMsg(ctx context.Context) {
 				ServerLogger.Debugf(ctx, "%s locked", fileCache.id)
 				defer func() {
 					err = fileCache.Unlock()
-					if err != nil {
-						ServerLogger.Errorf(ctx, err, "%s unlocked failed", fileCache.id)
+					if err == nil {
+						ServerLogger.Debugf(ctx, "%s unlock successed", fileCache.id)
+					} else {
+						ServerLogger.Errorf(ctx, err, "%s unlock failed", fileCache.id)
 					}
-					ServerLogger.Debugf(ctx, "%s unlocked", fileCache.id)
 				}()
 				ServerLogger.Debugf(ctx, "%s start to resend", fileCache.id)
 				err := fileCache.WriteToKafka(ctx)

@@ -9,6 +9,9 @@ option go_package = "grpc/proto/;pb";
 import "validate/validate.proto";
 
 service Api{
+
+  rpc Ping(PingRequest) returns(PingResponse){};
+
   // 单条数据摄入
   rpc IntakeData(IntakeDataRequest) returns (IntakeDataResponse){};
 
@@ -19,6 +22,10 @@ service Api{
   rpc MixIntakeData(MixIntakeDataRequest) returns (MixIntakeDataResponse){};
 }
 
+message PingRequest{}
+message PingResponse{
+  string data=1;
+}
 
 message IntakeDataRequest{
   string topic = 1; // 指定的 kafka topic

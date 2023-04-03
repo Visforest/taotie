@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -71,32 +72,32 @@ func NewCache() (*FileCache, error) {
 }
 
 // Lock lock cache file
-func (c *FileCache) Lock() {
+func (c *FileCache) Lock(tag string) {
 	c.Mutex.Lock()
 	// cache file lock, represents whether the cache file with the same cacheId is used
 	c.lockFilePath = fmt.Sprintf("%s/cache_%s.lock", GlbConfig.Data.DataDir, c.id)
 	// cache lock file,indicates whether the cache file is on use and prevents it from being currently modified
 	c.lockFile, _ = os.OpenFile(c.lockFilePath, os.O_CREATE|os.O_WRONLY, 0666)
 
-	n, _ := c.lockFile.WriteString(c.id)
-	fmt.Printf("lock file %s wrote %d", c.idxFilePath, n)
+	c.lockFile.WriteString(tag)
 	c.lockFile.Close()
 }
 
 // Unlock unlock cache file
-func (c *FileCache) Unlock() {
-	os.Remove(c.lockFilePath)
-	fmt.Printf("idx file %s is deleted", c.lockFilePath)
+func (c *FileCache) Unlock() error {
+	err := os.Remove(c.lockFilePath)
+	if err != nil {
+		return err
+	}
 	c.Mutex.Unlock()
+	return nil
 }
 
 // WriteCache continuously write cache data
 func (c *FileCache) WriteCache(data []byte) {
 	copy(c.cacheFileBytes[c.wroteAt:c.wroteAt+len(data)], data)
 	// record json encoded kafka message length
-	n, err := c.idxFile.WriteString(fmt.Sprintf("%d\n", len(data)))
-	fmt.Printf("idx file %s wrote %d \n", c.idxFilePath, n)
-	fmt.Printf("idx file write err:%+v \n", err)
+	c.idxFile.WriteString(fmt.Sprintf("%d\n", len(data)))
 	c.wroteAt += len(data)
 }
 
@@ -127,14 +128,18 @@ func (c *FileCache) FlushCache(maxSize int) error {
 func (c *FileCache) WriteToKafka(ctx context.Context) error {
 	defer c.idxFile.Close()
 	defer c.cacheFile.Close()
+	ServerLogger.Debugf(ctx, "%s write to kafka %s", c.id, c.cacheFilePath)
 
 	defer func() {
+		ServerLogger.Debugf(ctx, "%s finish write", c.id)
 		// truncate data that are already written to kafka
 		err := utils.TruncateFile(c.cacheFile, c.readCacheAt)
+		ServerLogger.Debugf(ctx, "%s cache file truncate from %d", c.id, c.readCacheAt)
 		if err != nil {
 			ServerLogger.Errorf(ctx, err, "truncate cache file failed")
 		}
 		err = utils.TruncateFile(c.idxFile, c.readIdxAt)
+		ServerLogger.Debugf(ctx, "%s idx file truncate from %d", c.id, c.readIdxAt)
 		if err != nil {
 			ServerLogger.Errorf(ctx, err, "truncate idx file failed")
 		}
@@ -149,12 +154,15 @@ func (c *FileCache) WriteToKafka(ctx context.Context) error {
 	idxReader := bufio.NewReader(c.idxFile)
 	for {
 		line, err := idxReader.ReadString('\n')
+		ServerLogger.Debugf(ctx, "%s idx read %s,at %d", c.id, line, c.readIdxAt)
 		if len(line) > 1 {
 			msgByteLen, err := strconv.ParseInt(strings.TrimRight(line, "\n"), 10, 64)
 			if err != nil {
 				return err
 			}
+			ServerLogger.Debugf(ctx, "%s readCacheAt:%d,msgByteLen:%d", c.id, c.readCacheAt, msgByteLen)
 			msgBytes := c.cacheFileBytes[c.readCacheAt : c.readCacheAt+msgByteLen]
+			msgBytes = bytes.Trim(msgBytes, "\x00")
 			var msg kafka.Message
 			if err := json.Unmarshal(msgBytes, &msg); err != nil {
 				return err
@@ -168,6 +176,7 @@ func (c *FileCache) WriteToKafka(ctx context.Context) error {
 			c.readIdxAt += int64(len(line))
 		}
 		if err == io.EOF {
+			ServerLogger.Debugf(ctx, "%s read finished", c.id)
 			break
 		}
 		if err != nil {
@@ -178,8 +187,6 @@ func (c *FileCache) WriteToKafka(ctx context.Context) error {
 }
 
 func (c *FileCache) Clear() error {
-	c.Lock()
-	defer c.Unlock()
 	var err error
 	err = os.Remove(c.cacheFilePath)
 	if err != nil {

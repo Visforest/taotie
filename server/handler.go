@@ -93,6 +93,7 @@ waitResume:
 
 // ResendMsg resends cached msgs to kafka
 func ResendMsg(ctx context.Context) {
+	ServerLogger.Debugf(ctx, "started to resend msg")
 	if err := os.MkdirAll(GlbConfig.Data.DataDir, 0666); err != nil {
 		ServerLogger.Panicf(ctx, err, "make data dir: %s failed", GlbConfig.Data.DataDir)
 	}
@@ -104,7 +105,9 @@ func ResendMsg(ctx context.Context) {
 		files := make(map[string]*FileCache)
 		reg := regexp.MustCompile(`cache_(?P<cacheId>[-a-z0-9]+)\.(?:cache|idx|lock)`)
 		for _, fileInfo := range fileInfos {
+			ServerLogger.Debugf(ctx, "check dir,got %s", fileInfo.Name())
 			if fileInfo.IsDir() {
+				ServerLogger.Warnf(ctx, "%s is dir,skip", fileInfo.Name())
 				continue
 			}
 			tmp := reg.FindStringSubmatch(fileInfo.Name())
@@ -118,19 +121,22 @@ func ResendMsg(ctx context.Context) {
 				cache = &FileCache{id: cacheId}
 			}
 
-			if strings.HasSuffix(cacheId, ".cache") {
-				cache.cacheFilePath = fmt.Sprintf("%s/%s", GlbConfig.Data.DataDir, fileInfo)
+			if strings.HasSuffix(fileInfo.Name(), ".cache") {
+				cache.cacheFilePath = fmt.Sprintf("%s/%s", GlbConfig.Data.DataDir, fileInfo.Name())
 				cache.cacheFile, _ = os.OpenFile(cache.cacheFilePath, os.O_RDWR, 0)
-			} else if strings.HasSuffix(cacheId, ".idx") {
-				cache.idxFilePath = fmt.Sprintf("%s/%s", GlbConfig.Data.DataDir, fileInfo)
-				cache.idxFile, _ = os.OpenFile(cache.cacheFilePath, os.O_RDWR, 0)
-			} else if strings.HasSuffix(cacheId, ".lock") {
-				cache.lockFilePath = fmt.Sprintf("%s/%s", GlbConfig.Data.DataDir, fileInfo)
+			} else if strings.HasSuffix(fileInfo.Name(), ".idx") {
+				cache.idxFilePath = fmt.Sprintf("%s/%s", GlbConfig.Data.DataDir, fileInfo.Name())
+				cache.idxFile, _ = os.OpenFile(cache.idxFilePath, os.O_RDWR, 0)
+			} else if strings.HasSuffix(fileInfo.Name(), ".lock") {
+				cache.lockFilePath = fmt.Sprintf("%s/%s", GlbConfig.Data.DataDir, fileInfo.Name())
 				cache.lockFile, _ = os.OpenFile(cache.lockFilePath, os.O_RDWR, 0)
 			}
+			files[cacheId] = cache
 		}
 		for cacheId, cache := range files {
+			ServerLogger.Debugf(ctx, "%s resend,read %+v", cacheId, cache)
 			if cache.lockFilePath != "" {
+				ServerLogger.Warnf(ctx, "%s lock file found,skip", cacheId)
 				continue
 			}
 			if cache.idxFilePath == "" {
@@ -143,18 +149,28 @@ func ResendMsg(ctx context.Context) {
 			}
 			// rewrite to kafka
 			go func(fileCache *FileCache) {
-				fileCache.Lock()
-				defer fileCache.Unlock()
+				fileCache.Lock("resend msgs")
+				ServerLogger.Debugf(ctx, "%s locked", fileCache.id)
+				defer func() {
+					err = fileCache.Unlock()
+					if err != nil {
+						ServerLogger.Errorf(ctx, err, "%s unlocked failed", fileCache.id)
+					}
+					ServerLogger.Debugf(ctx, "%s unlocked", fileCache.id)
+				}()
+				ServerLogger.Debugf(ctx, "%s start to resend", fileCache.id)
 				err := fileCache.WriteToKafka(ctx)
 				if err == nil {
 					// rewrite all msgs,clear cache
 					err = fileCache.Clear()
-					if err != nil {
-						ServerLogger.Errorf(ctx, err, "clear cache data failed")
+					if err == nil {
+						ServerLogger.Debugf(ctx, "%s clear succeeded", fileCache.id)
+					} else {
+						ServerLogger.Errorf(ctx, err, "%s clear failed", fileCache.id)
 					}
 				} else {
 					// rewrite failed
-					ServerLogger.Errorf(ctx, err, "rewrite to kafka failed")
+					ServerLogger.Errorf(ctx, err, "%s resend failed", fileCache.id)
 				}
 			}(cache)
 		}
@@ -205,7 +221,7 @@ cacheMsg:
 						ServerLogger.Errorf(ctx, err, "create cache failed")
 						break
 					}
-					cache.Lock()
+					cache.Lock("cache msgs")
 				}
 				if mbytes, err := json.Marshal(m); err == nil {
 					if cache.wroteAt+len(mbytes) > maxCacheSize {
@@ -220,8 +236,9 @@ cacheMsg:
 			}
 		}
 		if cache != nil {
+			ServerLogger.Debugf(ctx, "%s flush cache", cache.id)
 			if err := cache.FlushCache(maxCacheSize); err != nil {
-				ServerLogger.Errorf(ctx, err, "flush cache failed")
+				ServerLogger.Errorf(ctx, err, "%s flush cache failed", cache.id)
 			}
 			cache.Unlock()
 		}
@@ -262,13 +279,14 @@ func Sentinel(ctx context.Context) {
 }
 
 func saveMsgToLocal(ctx context.Context, ch <-chan kafka.Message) {
+	ServerLogger.Debugf(ctx, "saveMsgToLocal")
 	cache, err := NewCache()
 	if err != nil {
 		ServerLogger.Errorf(ctx, err, "create cache file failed")
 		return
 	}
 
-	cache.Lock()
+	cache.Lock("save msg to local")
 	defer cache.Unlock()
 
 	for m := range ch {

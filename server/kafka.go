@@ -7,6 +7,10 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
+const (
+	KafkaBatchSize = 1 << 5
+)
+
 var KafkaWriter *kafka.Writer
 
 var kafkaConn *kafka.Conn
@@ -18,7 +22,7 @@ func InitKafka(ctx context.Context) {
 		WriteTimeout:           time.Millisecond * time.Duration(GlbConfig.Kafka.WriteTimeout),
 		RequiredAcks:           kafka.RequiredAcks(GlbConfig.Kafka.AckPolicy),
 		Async:                  false,
-		BatchSize:              1,
+		BatchSize:              KafkaBatchSize,
 		Compression:            kafka.Lz4,
 		AllowAutoTopicCreation: true,
 	}
@@ -26,6 +30,5 @@ func InitKafka(ctx context.Context) {
 	kafkaConn, err = kafka.Dial("tcp", GlbConfig.Kafka.Broker[0])
 	if err != nil {
 		ServerLogger.Panicf(ctx, err, "connect to kafka node %s failed", GlbConfig.Kafka.Broker[0])
-		// panic(fmt.Sprintf("connect to kafka node %s failed", GlbConfig.Kafka.Broker[0]))
 	}
 }

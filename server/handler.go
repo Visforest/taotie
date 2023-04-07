@@ -63,20 +63,48 @@ func BufMsg(msgs ...*kafka.Message) {
 func SendMsg(ctx context.Context) {
 
 writeKafka:
+	var batchMsgs = make([]kafka.Message, KafkaBatchSize)
+	var msgIdx int
 	for {
+		c, cancel := context.WithTimeout(ctx, time.Second)
+		// reset msgIdx
+		msgIdx = 0
 		select {
 		case m := <-chMsg:
-			if err := KafkaWriter.WriteMessages(ctx, m); err != nil {
+			batchMsgs[msgIdx] = m
+			msgIdx++
+			if msgIdx == KafkaBatchSize {
+				// reached batch threshold, batch write
+				if err := KafkaWriter.WriteMessages(c, batchMsgs...); err != nil {
+					ServerLogger.Errorf(ctx, err, "write msg to kafka failed")
+					for _, failMsg := range batchMsgs {
+						chCache <- failMsg
+					}
+				}
+				cancel()
+			}
+		case <-c.Done():
+			// timedout, flush msgs
+			if err := KafkaWriter.WriteMessages(c, batchMsgs[:msgIdx]...); err != nil {
 				ServerLogger.Errorf(ctx, err, "write msg to kafka failed")
-				chCache <- m
+				for _, failMsg := range batchMsgs[:msgIdx] {
+					chCache <- failMsg
+				}
 			}
 		case direction := <-chDirection:
+			cancel()
 			switch direction {
 			case rushStage:
+				for _, interupptedMsg := range batchMsgs[:msgIdx] {
+					chCache <- interupptedMsg
+				}
 				runtime.Goexit()
 				return
 			case temporaryStage:
 				// stop to write to kafka, write to local instead
+				for _, interupptedMsg := range batchMsgs[:msgIdx] {
+					chCache <- interupptedMsg
+				}
 				goto waitResume
 			}
 		default:
@@ -210,7 +238,7 @@ cacheMsg:
 			}
 		}()
 		for {
-			if timedout || cancelWrite || pauseWrite {
+			if timedout || pauseWrite {
 				break
 			}
 			select {
@@ -233,6 +261,9 @@ cacheMsg:
 					ServerLogger.Errorf(ctx, err, "json encode msg failed:%+v", m)
 				}
 			default:
+				if cancelWrite {
+					break
+				}
 				continue
 			}
 		}

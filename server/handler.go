@@ -30,11 +30,13 @@ const (
 	temporaryStage Direction = 2
 	// resume resume to work
 	resume Direction = 3
+	// finished writing
+	finishCache Direction = 4
 )
 
 var chMsg = make(chan kafka.Message, bufSize)
 var chCache = make(chan kafka.Message, bufSize)
-var chDirection = make(chan Direction, 2)
+var chDirection = make(chan Direction)
 
 func GenMessage(topic string, data *map[string]interface{}) (*kafka.Message, error) {
 	bytes, err := json.Marshal(*data)
@@ -61,61 +63,71 @@ func BufMsg(msgs ...*kafka.Message) {
 
 // SendMsg sends msgs to kafka
 func SendMsg(ctx context.Context) {
-
-writeKafka:
 	var batchMsgs = make([]kafka.Message, KafkaBatchSize)
 	var msgIdx int
+	var forwardToCache = false
 	for {
+	fetchMsg:
 		c, cancel := context.WithTimeout(ctx, time.Second)
 		// reset msgIdx
 		msgIdx = 0
-		select {
-		case m := <-chMsg:
-			batchMsgs[msgIdx] = m
-			msgIdx++
-			if msgIdx == KafkaBatchSize {
-				// reached batch threshold, batch write
-				if err := KafkaWriter.WriteMessages(c, batchMsgs...); err != nil {
+		for {
+			select {
+			case m := <-chMsg:
+				if forwardToCache {
+					// abnormal, forward msg to cache buffer
+					chCache <- m
+				} else {
+					// normal
+					batchMsgs[msgIdx] = m
+					msgIdx++
+					if msgIdx == KafkaBatchSize {
+						// reached batch threshold, batch write
+						if err := KafkaWriter.WriteMessages(ctx, batchMsgs...); err != nil {
+							ServerLogger.Errorf(ctx, err, "write msg to kafka failed")
+							for _, failMsg := range batchMsgs {
+								chCache <- failMsg
+							}
+						}
+						cancel()
+						goto fetchMsg
+					}
+				}
+			case <-c.Done():
+				// timedout, flush msgs
+				if err := KafkaWriter.WriteMessages(ctx, batchMsgs[:msgIdx]...); err != nil {
 					ServerLogger.Errorf(ctx, err, "write msg to kafka failed")
-					for _, failMsg := range batchMsgs {
+					for _, failMsg := range batchMsgs[:msgIdx] {
 						chCache <- failMsg
 					}
 				}
+				goto fetchMsg
+			case direction := <-chDirection:
 				cancel()
-			}
-		case <-c.Done():
-			// timedout, flush msgs
-			if err := KafkaWriter.WriteMessages(c, batchMsgs[:msgIdx]...); err != nil {
-				ServerLogger.Errorf(ctx, err, "write msg to kafka failed")
-				for _, failMsg := range batchMsgs[:msgIdx] {
-					chCache <- failMsg
+				switch direction {
+				case rushStage:
+					for _, interupptedMsg := range batchMsgs[:msgIdx] {
+						chCache <- interupptedMsg
+					}
+					chDirection <- finishCache
+					runtime.Goexit()
+					return
+				case temporaryStage:
+					// kafka is temporarily available, stop writing to kafka, write to local instead
+					for _, interupptedMsg := range batchMsgs[:msgIdx] {
+						chCache <- interupptedMsg
+					}
+					forwardToCache = true
+					// reset msgIdx
+					msgIdx = 0
+				case resume:
+					// kafka is available again, continue to write to kafka
+					forwardToCache = false
 				}
+			default:
+				continue
 			}
-		case direction := <-chDirection:
-			cancel()
-			switch direction {
-			case rushStage:
-				for _, interupptedMsg := range batchMsgs[:msgIdx] {
-					chCache <- interupptedMsg
-				}
-				runtime.Goexit()
-				return
-			case temporaryStage:
-				// stop to write to kafka, write to local instead
-				for _, interupptedMsg := range batchMsgs[:msgIdx] {
-					chCache <- interupptedMsg
-				}
-				goto waitResume
-			}
-		default:
-			continue
 		}
-	}
-
-waitResume:
-	direction := <-chDirection
-	if direction == resume {
-		goto writeKafka
 	}
 }
 
@@ -212,15 +224,12 @@ func CacheMsg(ctx context.Context) {
 	if err := os.MkdirAll(GlbConfig.Data.DataDir, 0666); err != nil {
 		ServerLogger.Errorf(ctx, err, "make data dir: %s failed", GlbConfig.Data.DataDir)
 	}
-
-cacheMsg:
 	for {
 		ctx, cancel := context.WithTimeout(ctx, time.Minute)
 
 		var cache *FileCache
 		var timedout = false
-		var cancelWrite = false
-		var pauseWrite = false
+		var stopWrite = false
 		// monitor timeout and direction
 		go func() {
 			select {
@@ -228,17 +237,15 @@ cacheMsg:
 				timedout = true
 			case direction := <-chDirection:
 				switch direction {
-				case rushStage:
-					cancelWrite = true
-					cancel()
-				case temporaryStage:
-					pauseWrite = true
+				case finishCache:
+					stopWrite = true
 					cancel()
 				}
 			}
 		}()
 		for {
-			if timedout || pauseWrite {
+			if timedout {
+				ServerLogger.Debugf(ctx, "cache msg,timedout,break")
 				break
 			}
 			select {
@@ -246,6 +253,7 @@ cacheMsg:
 				if cache == nil {
 					var err error
 					cache, err = NewCache()
+					ServerLogger.Debugf(ctx, "%s cache created", cache.id)
 					if err != nil {
 						ServerLogger.Errorf(ctx, err, "create cache failed")
 						break
@@ -261,7 +269,8 @@ cacheMsg:
 					ServerLogger.Errorf(ctx, err, "json encode msg failed:%+v", m)
 				}
 			default:
-				if cancelWrite {
+				if stopWrite {
+					ServerLogger.Infof(ctx, "start to stop writing cache")
 					break
 				}
 				continue
@@ -274,17 +283,10 @@ cacheMsg:
 			}
 			cache.Unlock()
 		}
-		if cancelWrite {
+		if stopWrite {
+			ServerLogger.Infof(ctx, "stoped writing cache")
 			break
 		}
-		if pauseWrite {
-			goto waitResume
-		}
-	}
-waitResume:
-	direction := <-chDirection
-	if direction == resume {
-		goto cacheMsg
 	}
 }
 
@@ -296,12 +298,10 @@ func Sentinel(ctx context.Context) {
 		if _, err := kafkaConn.ReadPartitions(); err != nil {
 			ServerLogger.Errorf(ctx, err, "detected exception regularly")
 			chDirection <- temporaryStage
-			chDirection <- temporaryStage
 			normal = false
 			dur = time.Second * 5
 		} else {
 			if !normal {
-				chDirection <- resume
 				chDirection <- resume
 				dur = time.Second * 10
 			}
@@ -342,8 +342,6 @@ func RushStageData(ctx context.Context) {
 		return
 	}
 	// msgs in channel aren't read completely,turn to save to local
-	// and we sent 2, because we have 2 goroutine consumers. A broadcast is better, may be done in the future.
-	chDirection <- rushStage
 	chDirection <- rushStage
 	if len(chMsg) > 0 {
 		saveMsgToLocal(ctx, chMsg)

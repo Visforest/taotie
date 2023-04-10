@@ -3,6 +3,7 @@ module github.com/visforest/vftt
 go 1.20
 
 require (
+	github.com/Visforest/goset v1.0.0
 	github.com/envoyproxy/protoc-gen-validate v0.9.1
 	github.com/gin-contrib/pprof v1.4.0
 	github.com/gin-gonic/gin v1.9.0

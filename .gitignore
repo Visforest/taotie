@@ -1,9 +1,10 @@
 .idea/
 .vscode/
 */bin/
+bin/
 *.log
-*.txt
 *.cache
 *.idx
 *.lock
 .DS_Store
+__debug_bin

@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -11,6 +12,10 @@ import (
 	"github.com/visforest/vftt/utils"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
+)
+
+var (
+	invalidTopicError = errors.New("invalid topic")
 )
 
 type GrpcService struct {
@@ -76,6 +81,9 @@ func (s *GrpcService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRe
 }
 
 func (s *GrpcService) IntakeData(ctx context.Context, req *pb.IntakeDataRequest) (*pb.IntakeDataResponse, error) {
+	if GlbConfig.Server.EnableTopicWhitelist && !GlbConfig.Server.TopicWhitelist.Has(req.Topic) {
+		return nil, invalidTopicError
+	}
 	data, err := patchExt(ctx, req.DataObj)
 	if err != nil {
 		return nil, err
@@ -89,6 +97,9 @@ func (s *GrpcService) IntakeData(ctx context.Context, req *pb.IntakeDataRequest)
 }
 
 func (s *GrpcService) BatchIntakeData(ctx context.Context, req *pb.BatchIntakeDataRequest) (*pb.BatchIntakeDataResponse, error) {
+	if GlbConfig.Server.EnableTopicWhitelist && !GlbConfig.Server.TopicWhitelist.Has(req.Topic) {
+		return nil, invalidTopicError
+	}
 	data, err := patchExts(ctx, req.DataList)
 	if err != nil {
 		return nil, err
@@ -107,6 +118,9 @@ func (s *GrpcService) BatchIntakeData(ctx context.Context, req *pb.BatchIntakeDa
 
 func (s *GrpcService) MixIntakeData(ctx context.Context, req *pb.MixIntakeDataRequest) (*pb.MixIntakeDataResponse, error) {
 	for _, dataItem := range req.Data {
+		if GlbConfig.Server.EnableTopicWhitelist && !GlbConfig.Server.TopicWhitelist.Has(dataItem.Topic) {
+			continue
+		}
 		data, err := patchExt(ctx, dataItem.DataObj)
 		if err != nil {
 			return nil, err

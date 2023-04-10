@@ -9,6 +9,7 @@ server:
     - rid
     - ck
     - ts
+  topic_whitelist: topic_whitelist.txt
 kafka:
   broker:
     - localhost:9092

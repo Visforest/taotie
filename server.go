@@ -66,6 +66,9 @@ func main() {
 	}
 
 	fmt.Println(GlbConfig)
+	if GlbConfig.Server.EnableTopicWhitelist {
+		fmt.Println("topic white list:", GlbConfig.Server.TopicWhitelist.ToList())
+	}
 
 	ServerLogger, err = InitLogger("server.log")
 	if err != nil {

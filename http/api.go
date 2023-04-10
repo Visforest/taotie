@@ -13,6 +13,7 @@ import (
 const (
 	Ok = iota
 	BadParam
+	InvalidTopic
 	ServerErr
 )
 
@@ -36,6 +37,7 @@ type Resp struct {
 
 var okResp = Resp{Ok}
 var badParamResp = Resp{BadParam}
+var invalidTopicResp = Resp{InvalidTopic}
 var serverErrResp = Resp{ServerErr}
 
 // 为数据填充扩展字段
@@ -87,6 +89,10 @@ func IntakeData(c *gin.Context) {
 		c.JSON(200, badParamResp)
 		return
 	}
+	if GlbConfig.Server.EnableTopicWhitelist && !GlbConfig.Server.TopicWhitelist.Has(req.Topic) {
+		c.JSON(200, invalidTopicResp)
+		return
+	}
 	ServerLogger.Debugf(c, "intake data req:%v", req)
 	if _, ok := req.Data["timestamp"]; !ok {
 		// 添加号码时间戳
@@ -110,6 +116,10 @@ func BatchIntakeData(c *gin.Context) {
 	var req BatchIntakeDataParam
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(200, badParamResp)
+		return
+	}
+	if GlbConfig.Server.EnableTopicWhitelist && !GlbConfig.Server.TopicWhitelist.Has(req.Topic) {
+		c.JSON(200, invalidTopicResp)
 		return
 	}
 	ServerLogger.Debugf(c, "batch intake data req:%v", req)
@@ -140,6 +150,9 @@ func MixIntakeData(c *gin.Context) {
 	ServerLogger.Debugf(c, "mix intake data req:%v", req)
 	var msgs []*kafka.Message
 	for _, d := range req.Data {
+		if GlbConfig.Server.EnableTopicWhitelist && !GlbConfig.Server.TopicWhitelist.Has(d.Topic) {
+			continue
+		}
 		tmp := d
 		patchExts(c, &tmp.Data)
 

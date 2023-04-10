@@ -107,6 +107,7 @@ curl -X POST \
 ```
 
 ## 混合 topic 数据批量上报
+
 ```curl
 curl -X POST \
   http://127.0.0.1:8000/intake/mix \
@@ -144,30 +145,31 @@ kafka 请设置 topic 自动创建。
 
 示例可参阅 [config_example.yaml](./config_example.yaml)：
 
-| 字段                | 可选项  | 说明                                                                    | 默认值             |
-| ------------------- | ------- | ----------------------------------------------------------------------- | ------------------ |
-| server.http.addr    |         | http 服务监听地址                                                       | 127.0.0.1:8000     |
-| server.grpc.addr    |         | grpc 服务监听地址                                                       | 127.0.0.1:9000     |
-| server.ext_fields   |         | 数据扩展字段                                                            | 空                 |
-|                     | ip      | 请求来源 IP                                                             |                    |
-|                     | ua      | 请求客户端标识，即请求头中的 `User-Agent`                             |                    |
-|                     | rid     | 请求标识，即请求头中的 `X-Request-ID`                                 | 使用 uuid 生成     |
-|                     | ck      | 请求用户标识，即请求头中的 `Cookie`                                   |                    |
-|                     | ts      | 数据业务毫秒时间戳，即数据中的 `timestamp` 字段                       | 使用当前毫秒时间戳 |
-| kafka.broker        |         | kafka 连接节点地址                                                      | localhost:9092     |
-| kafka.partition_cnt |         | kafka topic 分区数量                                                    | 1                  |
-| kafka.write_timeout |         | kafka 写消息超时时间，单位为毫秒                                        | 10                 |
-| kafka.ack_policy    |         | kafka 写入消息成功的确认机制                                            | one                |
-|                     | none    | 不需要 kafka broker 确认成功，性能最好，安全性最差                      |                    |
-|                     | one     | 至少有一个 kafka broker 确认成功，性能折中，安全性中等                  |                    |
-|                     | all     | 所有 kafka broker 都必须确认成功，性能最差，安全性最高                  |                    |
-| data.data_dir       |         | 消息本地暂存目录                                                        | ./data/            |
-| log.log_dir         |         | 日志目录                                                                | ./logs/            |
-| log.log_level       |         | 日志记录级别                                                            | disable            |
-|                     | disable | 禁用日志                                                                |                    |
-|                     | disable |                                                                         |                    |
-|                     | info    |                                                                         |                    |
-|                     | warn    |                                                                         |                    |
-|                     | err     |                                                                         |                    |
-|                     | fatal   |                                                                         |                    |
-|                     | disable |                                                                         |                    |
+| 字段                   | 可选项  | 说明                                                                            | 默认值             |
+| ---------------------- | ------- | ------------------------------------------------------------------------------- | ------------------ |
+| server.http.addr       |         | http 服务监听地址                                                               | 127.0.0.1:8000     |
+| server.grpc.addr       |         | grpc 服务监听地址                                                               | 127.0.0.1:9000     |
+| server.ext_fields      |         | 数据扩展字段                                                                    | 空                 |
+|                        | ip      | 请求来源 IP                                                                     |                    |
+|                        | ua      | 请求客户端标识，即请求头中的 `User-Agent`                                     |                    |
+|                        | rid     | 请求标识，即请求头中的 `X-Request-ID`                                         | 使用 uuid 生成     |
+|                        | ck      | 请求用户标识，即请求头中的 `Cookie`                                           |                    |
+|                        | ts      | 数据业务毫秒时间戳，即数据中的 `timestamp` 字段                               | 使用当前毫秒时间戳 |
+| server.topic_whitelist |         | kafka topic 白名单文件，每行一个 topic，topic会去除空格，如不设置则不启用白名单 |                    |
+| kafka.broker           |         | kafka 连接节点地址                                                              | localhost:9092     |
+| kafka.partition_cnt    |         | kafka topic 分区数量                                                            | 1                  |
+| kafka.write_timeout    |         | kafka 写消息超时时间，单位为毫秒                                                | 10                 |
+| kafka.ack_policy       |         | kafka 写入消息成功的确认机制                                                    | one                |
+|                        | none    | 不需要 kafka broker 确认成功，性能最好，安全性最差                              |                    |
+|                        | one     | 至少有一个 kafka broker 确认成功，性能折中，安全性中等                          |                    |
+|                        | all     | 所有 kafka broker 都必须确认成功，性能最差，安全性最高                          |                    |
+| data.data_dir          |         | 消息本地暂存目录                                                                | ./data/            |
+| log.log_dir            |         | 日志目录                                                                        | ./logs/            |
+| log.log_level          |         | 日志记录级别                                                                    | disable            |
+|                        | disable | 禁用日志                                                                        |                    |
+|                        | disable |                                                                                 |                    |
+|                        | info    |                                                                                 |                    |
+|                        | warn    |                                                                                 |                    |
+|                        | err     |                                                                                 |                    |
+|                        | fatal   |                                                                                 |                    |
+|                        | disable |                                                                                 |                    |

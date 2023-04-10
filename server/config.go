@@ -1,8 +1,13 @@
 package server
 
 import (
-	"gopkg.in/yaml.v3"
+	"bufio"
+	"io"
 	"os"
+	"strings"
+
+	"github.com/Visforest/goset"
+	"gopkg.in/yaml.v3"
 )
 
 type HttpConfig struct {
@@ -14,9 +19,12 @@ type GrpcConfig struct {
 }
 
 type ServerConfig struct {
-	Http      HttpConfig `yaml:"http"`
-	Grpc      GrpcConfig `yaml:"grpc"`
-	ExtFields []string   `yaml:"ext_fields"` // ext fields to patch into kafka data
+	Http                 HttpConfig `yaml:"http"`
+	Grpc                 GrpcConfig `yaml:"grpc"`
+	ExtFields            []string   `yaml:"ext_fields"`      // ext fields to patch into kafka data
+	TopicFile            string     `yaml:"topic_whitelist"` // topic whitelist file
+	EnableTopicWhitelist bool
+	TopicWhitelist       *goset.Set
 }
 
 type KafkaConfig struct {
@@ -49,6 +57,29 @@ func ParseConfig(file *string) error {
 	}
 	if err := yaml.Unmarshal(f, &GlbConfig); err != nil {
 		return err
+	}
+	if GlbConfig.Server.TopicFile != "" {
+		topicFile, err := os.Open(GlbConfig.Server.TopicFile)
+		if err != nil {
+			return err
+		}
+		GlbConfig.Server.TopicWhitelist = goset.New()
+		GlbConfig.Server.EnableTopicWhitelist = true
+		topicReader := bufio.NewReader(topicFile)
+		for {
+			line, err := topicReader.ReadString('\n')
+			line = strings.Trim(line, "\n")
+			line = strings.Trim(line, " ")
+			if line != "" {
+				GlbConfig.Server.TopicWhitelist.Add(line)
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

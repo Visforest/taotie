@@ -63,7 +63,7 @@ func ParseConfig(file *string) error {
 		if err != nil {
 			return err
 		}
-		GlbConfig.Server.TopicWhitelist = goset.New()
+		GlbConfig.Server.TopicWhitelist = goset.NewSet()
 		GlbConfig.Server.EnableTopicWhitelist = true
 		topicReader := bufio.NewReader(topicFile)
 		for {

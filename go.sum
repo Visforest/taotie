@@ -1,5 +1,5 @@
-github.com/Visforest/goset v1.0.0 h1:B4XybsCi7q5DMceacbL4jTZ8h3XbRgH2Ezd71D2krGg=
-github.com/Visforest/goset v1.0.0/go.mod h1:2X9ut6xPfRVvIeNGIIe32XcJPZn9CgfjrYeSL22P3Y0=
+github.com/Visforest/goset v1.1.1 h1:fr+Mh8AUOjiDEibDcXgdRFr7WsYfXFb6+tra+RcG9tU=
+github.com/Visforest/goset v1.1.1/go.mod h1:2X9ut6xPfRVvIeNGIIe32XcJPZn9CgfjrYeSL22P3Y0=
 github.com/bytedance/sonic v1.5.0/go.mod h1:ED5hyg4y6t3/9Ku1R6dU/4KyJ48DZ4jPhfY1O2AihPM=
 github.com/bytedance/sonic v1.8.0 h1:ea0Xadu+sHlu7x5O3gKhRpQ1IKiMrSiHttPF0ybECuA=
 github.com/bytedance/sonic v1.8.0/go.mod h1:i736AoUSYt75HyZLoJW9ERYxcy6eaN6h4BZXU064P/U=

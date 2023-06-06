@@ -19,5 +19,10 @@ kafka:
 data:
   data_dir: /tmp/vftt
 log:
-  log_dir: /var/logs/vftt
-  log_level: disable
+  dir: /var/logs/vftt
+  file_name: myapp.log
+  level: debug
+  max_size: 100
+  max_days: 30
+  max_backups: 10
+  compress: true

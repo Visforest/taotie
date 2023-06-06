@@ -44,24 +44,24 @@ type LogConfig struct {
 }
 
 type Config struct {
-	Server ServerConfig `yaml:"server"`
-	Kafka  KafkaConfig  `yaml:"kafka"`
-	Data   DataConfig   `yaml:"data"`
-	Log    LogConfig    `yaml:"log"`
+	Server ServerConfig  `yaml:"server"`
+	Kafka  KafkaConfig   `yaml:"kafka"`
+	Data   DataConfig    `yaml:"data"`
+	Log    TLoggerConfig `yaml:"log"`
 }
 
-func ParseConfig(file *string) error {
+func MustLoadConfig(file *string) {
 	f, err := os.ReadFile(*file)
 	if err != nil {
-		return err
+		panic(err)
 	}
 	if err := yaml.Unmarshal(f, &GlbConfig); err != nil {
-		return err
+		panic(err)
 	}
 	if GlbConfig.Server.TopicFile != "" {
 		topicFile, err := os.Open(GlbConfig.Server.TopicFile)
 		if err != nil {
-			return err
+			panic(err)
 		}
 		GlbConfig.Server.TopicWhitelist = goset.NewSet()
 		GlbConfig.Server.EnableTopicWhitelist = true
@@ -77,11 +77,10 @@ func ParseConfig(file *string) error {
 				break
 			}
 			if err != nil {
-				return err
+				panic(err)
 			}
 		}
 	}
-	return nil
 }
 
 var GlbConfig Config

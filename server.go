@@ -59,18 +59,14 @@ func main() {
 	configPath := flag.String("c", "config.yaml", "config file path,default: ./config.yaml")
 	flag.Parse()
 
-	var err error
-	err = ParseConfig(configPath)
-	if err != nil {
-		panic(err)
-	}
+	MustLoadConfig(configPath)
 
 	fmt.Println(GlbConfig)
 	if GlbConfig.Server.EnableTopicWhitelist {
 		fmt.Println("topic white list:", GlbConfig.Server.TopicWhitelist.ToList())
 	}
-
-	ServerLogger, err = InitLogger("server.log")
+	var err error
+	ServerLogger, err = NewLogger(&GlbConfig.Log)
 	if err != nil {
 		panic(err)
 	}
